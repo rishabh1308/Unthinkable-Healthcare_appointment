@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(PATIENT)
+  createdAt DateTime @default(now())
+
+  doctor       Doctor?
+  appointments Appointment[] @relation("PatientAppointments")
+}
+
+model Doctor {
+  id                String        @id @default(uuid())
+  userId            String        @unique
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization    String
+  workingHoursStart String        // e.g. "09:00"
+  workingHoursEnd   String        // e.g. "17:00"
+  slotDuration      Int           // minutes
+  leaves            DoctorLeave[]
+  appointments      Appointment[] @relation("DoctorAppointments")
+  createdAt         DateTime      @default(now())
+}
+
+model DoctorLeave {
+  id        String   @id @default(uuid())
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  leaveDate DateTime
+  reason    String?
+
+  @@unique([doctorId, leaveDate])
+}
+
+model Appointment {
+  id               String            @id @default(uuid())
+  patientId        String
+  patient          User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctorId         String
+  doctor           Doctor            @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  startTime        DateTime
+  endTime          DateTime
+  status           AppointmentStatus @default(BOOKED)
+  symptoms         String?
+  preVisitSummary  String?
+  urgencyLevel     String?
+  postVisitSummary String?
+  prescription     String?
+  googleEventId    String?
+  reminders        MedicationReminder[]
+  createdAt        DateTime          @default(now())
+
+  // Prevents two bookings for the same doctor at the same start time
+  // (primary double-booking guard; combined with a DB transaction on write)
+  @@unique([doctorId, startTime])
+}
+
+model MedicationReminder {
+  id            String      @id @default(uuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  medicineName  String
+  reminderTime  DateTime
+  sent          Boolean     @default(false)
+}
